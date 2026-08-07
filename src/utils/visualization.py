@@ -1,8 +1,9 @@
 """Visualization tools for encoder diagnostic benchmarking and calibration analysis."""
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 import matplotlib.pyplot as plt
 import numpy as np
+import torch
 from scipy.stats import linregress
 
 # Use non-interactive backend for server/script execution
@@ -313,4 +314,148 @@ def plot_ablation_comparison_bar(
         Path(save_path).parent.mkdir(parents=True, exist_ok=True)
         fig.savefig(save_path, bbox_inches="tight")
     return fig
+
+
+def overlay_cam_on_image(
+    image_gray: Union[np.ndarray, torch.Tensor],
+    cam_mask: Union[np.ndarray, torch.Tensor],
+    alpha: float = 0.45,
+    colormap: str = "turbo",
+    signed: bool = False,
+) -> np.ndarray:
+    """Overlays attribution heatmap onto grayscale ultrasound B-mode image.
+    
+    Args:
+        image_gray: (H, W) grayscale ultrasound image in [0, 1] or [0, 255].
+        cam_mask: (H, W) attribution heatmap in [0, 1] (or [-1, 1] if signed).
+        alpha: Blending weight for heatmap overlay (0.0 to 1.0).
+        colormap: Matplotlib colormap name ('turbo', 'magma', 'viridis', 'coolwarm').
+        signed: Whether cam_mask has signed values in [-1, +1].
+        
+    Returns:
+        overlay: (H, W, 3) RGB uint8 image.
+    """
+    if torch.is_tensor(image_gray):
+        image_gray = image_gray.detach().cpu().numpy()
+    if torch.is_tensor(cam_mask):
+        cam_mask = cam_mask.detach().cpu().numpy()
+
+    # Standardize image to float [0, 1]
+    img = np.nan_to_num(image_gray.astype(np.float32), nan=0.0)
+    if img.max() > 1.0:
+        img = img / 255.0
+    img = np.clip(img, 0.0, 1.0)
+
+    # Standardize CAM
+    cam = np.nan_to_num(cam_mask.astype(np.float32), nan=0.0)
+    if signed:
+        cam = np.clip(cam, -1.0, 1.0)
+        cmap = plt.get_cmap("coolwarm" if colormap == "turbo" else colormap)
+        # Normalize -1..1 to 0..1 for colormap
+        cam_scaled = (cam + 1.0) / 2.0
+    else:
+        cam = np.clip(cam, 0.0, 1.0)
+        cmap = plt.get_cmap(colormap)
+        cam_scaled = cam
+
+    # Apply colormap -> (H, W, 4) RGBA
+    heatmap_rgba = cmap(cam_scaled)
+    heatmap_rgb = heatmap_rgba[..., :3]  # (H, W, 3) in [0, 1]
+
+    # Convert grayscale image to 3-channel
+    img_rgb = np.stack([img, img, img], axis=-1)  # (H, W, 3)
+
+    # Blend: overlay = (1 - alpha) * img + alpha * heatmap
+    # Weight alpha by CAM intensity so low-attribution areas remain clear grayscale
+    if not signed:
+        effective_alpha = alpha * (cam[..., np.newaxis] ** 0.8)
+    else:
+        effective_alpha = alpha * (np.abs(cam)[..., np.newaxis] ** 0.8)
+
+    blended = (1.0 - effective_alpha) * img_rgb + effective_alpha * heatmap_rgb
+    blended = np.clip(blended, 0.0, 1.0)
+    return (blended * 255.0).astype(np.uint8)
+
+
+def plot_explainability_multipanel(
+    image_gray: np.ndarray,
+    cam_dict: Dict[str, np.ndarray],
+    title: str = "Feature Encoder Attribution Analysis",
+    save_path: Optional[Union[Path, str]] = None,
+) -> plt.Figure:
+    """Plots neutral, publication-ready multi-panel attribution figure."""
+    set_custom_style()
+    num_panels = 1 + len(cam_dict)
+    ncols = min(4, num_panels)
+    nrows = int(np.ceil(num_panels / ncols))
+
+    fig, axes = plt.subplots(nrows, ncols, figsize=(4.2 * ncols, 4.0 * nrows), dpi=200)
+    axes = np.array(axes).flatten()
+
+    # Panel 0: Original B-mode Ultrasound
+    axes[0].imshow(image_gray, cmap="gray")
+    axes[0].set_title("Input B-Mode Frame", fontsize=11, fontweight="bold")
+    axes[0].axis("off")
+
+    for idx, (name, cam_mask) in enumerate(cam_dict.items(), start=1):
+        ax = axes[idx]
+        overlay = overlay_cam_on_image(image_gray, cam_mask, alpha=0.5, colormap="turbo")
+        im = ax.imshow(overlay)
+        ax.set_title(name, fontsize=11, fontweight="bold")
+        ax.axis("off")
+
+    # Hide extra unused subplots
+    for ax in axes[num_panels:]:
+        ax.axis("off")
+
+    fig.suptitle(title, fontsize=13, fontweight="bold", y=0.98)
+    fig.tight_layout()
+    if save_path:
+        Path(save_path).parent.mkdir(parents=True, exist_ok=True)
+        fig.savefig(save_path, bbox_inches="tight")
+    return fig
+
+
+def plot_faithfulness_deletion_curves(
+    faithfulness_results: Dict[str, Any],
+    title: str = "Grad-CAM Faithfulness Evaluation (Pixel Deletion Test)",
+    save_path: Optional[Union[Path, str]] = None,
+) -> plt.Figure:
+    """Plots Deletion Faithfulness curves (% masked pixels vs. target score drop)."""
+    set_custom_style()
+    fig, ax = plt.subplots(figsize=(7, 5), dpi=200)
+
+    fractions = np.array(faithfulness_results["mask_fractions"]) * 100.0
+    top_drops = faithfulness_results["top_attribution_drops"]
+    rand_drops = faithfulness_results["random_attribution_drops"]
+    least_drops = faithfulness_results["least_attribution_drops"]
+
+    ax.plot(fractions, top_drops, "o-", color="#dc2626", lw=2.4, label=f"Top Attributed (AUDC={faithfulness_results['audc_top']:.4f})")
+    ax.plot(fractions, rand_drops, "s--", color="#2563eb", lw=2.0, label=f"Random Masking (AUDC={faithfulness_results['audc_random']:.4f})")
+    ax.plot(fractions, least_drops, "^:", color="#059669", lw=2.0, label=f"Least Attributed (AUDC={faithfulness_results['audc_least']:.4f})")
+
+    ax.set_title(title, fontsize=12, fontweight="bold")
+    ax.set_xlabel("Percentage of Pixels Masked (%)", fontsize=11, fontweight="bold")
+    ax.set_ylabel("Absolute Latent Score Change |ΔS|", fontsize=11, fontweight="bold")
+    ax.grid(True, linestyle="--", alpha=0.6)
+    ax.legend(loc="best", fontsize=10, framealpha=0.9)
+
+    is_faithful = faithfulness_results.get("is_faithful", False)
+    status_text = "Faithful: Top > Random >= Least" if is_faithful else "Non-monotonic / Weak Attribution"
+    status_color = "#059669" if is_faithful else "#d97706"
+    ax.text(
+        0.05, 0.92, status_text,
+        transform=ax.transAxes,
+        fontsize=10,
+        fontweight="bold",
+        color=status_color,
+        bbox=dict(boxstyle="round,pad=0.3", facecolor="#f8fafc", edgecolor=status_color, alpha=0.9),
+    )
+
+    fig.tight_layout()
+    if save_path:
+        Path(save_path).parent.mkdir(parents=True, exist_ok=True)
+        fig.savefig(save_path, bbox_inches="tight")
+    return fig
+
 

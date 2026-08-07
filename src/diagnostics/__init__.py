@@ -19,3 +19,14 @@ from .trajectory_eval import (
     pose_vec_to_mat,
     mat_to_pose_vec,
 )
+from .gradcam import (
+    ExplanationMetadata,
+    LatentOcclusion,
+    TrajectoryDirectionEstimator,
+    UltrasoundEigenCAM,
+    UltrasoundGradCAM,
+    evaluate_cam_faithfulness_deletion,
+    resolve_target_layer,
+    safe_min_max_normalize,
+)
+
