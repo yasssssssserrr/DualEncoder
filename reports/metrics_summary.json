@@ -1,0 +1,393 @@
+{
+  "timestamp": "2026-08-07 11:03:20",
+  "total_forearm_sweeps": 10,
+  "mean_correlations": {
+    "stage1_3d_cnn": {
+      "pearson_r": 0.026041749763820156,
+      "spearman_rho": 0.13003023598133104
+    },
+    "stage2_vit_cls": {
+      "pearson_r": -0.10384371256378992,
+      "spearman_rho": 0.07719438019633779
+    },
+    "stage3_temporal": {
+      "pearson_r": -0.09697649708039965,
+      "spearman_rho": 0.13406065167018688
+    },
+    "global_context": {
+      "pearson_r": 0.9182765453329562,
+      "spearman_rho": 0.8868533601338335
+    }
+  },
+  "mean_trajectory_metrics": {
+    "mean_lpe_mm": 1.6960761021030293,
+    "mean_gpe_mm": 21.783409228240824,
+    "mean_endpoint_error_mm": 61.42605105736192,
+    "mean_drift_percent": 90.78827262297656
+  },
+  "domain_alignment": {
+    "linear_cka": 0.11645171046257019
+  },
+  "per_sweep_details": [
+    {
+      "sweep_id": "20260708_182513_forearm_phantom_scan",
+      "num_frames": 47,
+      "correlations": {
+        "stage1_3d_cnn": {
+          "pearson_r": -0.008740911135105734,
+          "spearman_rho": 0.0880485535939274
+        },
+        "stage2_vit_cls": {
+          "pearson_r": -0.09716448796523038,
+          "spearman_rho": 0.08926275308060339
+        },
+        "stage3_temporal": {
+          "pearson_r": -0.10379240179392146,
+          "spearman_rho": 0.16940243667065868
+        },
+        "global_context": {
+          "pearson_r": 0.9122268572697332,
+          "spearman_rho": 0.8695856724820212
+        }
+      },
+      "decorrelation": {
+        "stage1_fwhm_mm": 30.93994801878182,
+        "stage2_fwhm_mm": 30.93994801878182,
+        "stage3_fwhm_mm": 29.144475917634736,
+        "global_fwhm_mm": 30.93994801878182
+      },
+      "trajectory": {
+        "mean_lpe_mm": 1.419592463163667,
+        "mean_gpe_mm": 19.237328694278197,
+        "max_gpe_mm": 54.155527793697395,
+        "endpoint_error_mm": 54.155527793697395,
+        "mean_rot_error_deg": 1.8139130182657217,
+        "drift_percent": 80.82251607796098
+      }
+    },
+    {
+      "sweep_id": "20260708_182809_forearm_phantom_scan",
+      "num_frames": 44,
+      "correlations": {
+        "stage1_3d_cnn": {
+          "pearson_r": 0.063289211991836,
+          "spearman_rho": 0.12404127281338796
+        },
+        "stage2_vit_cls": {
+          "pearson_r": -0.10847273353408939,
+          "spearman_rho": 0.03986517252955067
+        },
+        "stage3_temporal": {
+          "pearson_r": -0.11803762409253062,
+          "spearman_rho": 0.07194918744958355
+        },
+        "global_context": {
+          "pearson_r": 0.9172251727146847,
+          "spearman_rho": 0.8765206861325161
+        }
+      },
+      "decorrelation": {
+        "stage1_fwhm_mm": 31.108144263208008,
+        "stage2_fwhm_mm": 28.46563291267021,
+        "stage3_fwhm_mm": 18.13518956606245,
+        "global_fwhm_mm": 31.108144263208008
+      },
+      "trajectory": {
+        "mean_lpe_mm": 1.7141971111637675,
+        "mean_gpe_mm": 21.619655686370837,
+        "max_gpe_mm": 59.27930964072185,
+        "endpoint_error_mm": 59.27930964072185,
+        "mean_rot_error_deg": 1.4558435165777135,
+        "drift_percent": 94.72250465213563
+      }
+    },
+    {
+      "sweep_id": "20260708_183414_forearm_phantom_scan",
+      "num_frames": 46,
+      "correlations": {
+        "stage1_3d_cnn": {
+          "pearson_r": 0.05312829036239995,
+          "spearman_rho": 0.1485309847708138
+        },
+        "stage2_vit_cls": {
+          "pearson_r": -0.09343143051003323,
+          "spearman_rho": 0.10729400764383297
+        },
+        "stage3_temporal": {
+          "pearson_r": -0.07859114687903547,
+          "spearman_rho": 0.15715293546285886
+        },
+        "global_context": {
+          "pearson_r": 0.90621206905951,
+          "spearman_rho": 0.855763305227973
+        }
+      },
+      "decorrelation": {
+        "stage1_fwhm_mm": 29.585955010737962,
+        "stage2_fwhm_mm": 29.585955010737962,
+        "stage3_fwhm_mm": 14.868305045185563,
+        "global_fwhm_mm": 29.585955010737962
+      },
+      "trajectory": {
+        "mean_lpe_mm": 1.595107742333332,
+        "mean_gpe_mm": 19.875214165894132,
+        "max_gpe_mm": 59.60968317375407,
+        "endpoint_error_mm": 59.60968317375407,
+        "mean_rot_error_deg": 2.163676690070252,
+        "drift_percent": 93.62003655470717
+      }
+    },
+    {
+      "sweep_id": "20260708_183645_forearm_phantom_scan",
+      "num_frames": 46,
+      "correlations": {
+        "stage1_3d_cnn": {
+          "pearson_r": 0.30537041533708015,
+          "spearman_rho": 0.3097328222325287
+        },
+        "stage2_vit_cls": {
+          "pearson_r": 0.07395872231447571,
+          "spearman_rho": 0.23542710682072698
+        },
+        "stage3_temporal": {
+          "pearson_r": -0.0611082103971658,
+          "spearman_rho": 0.2331738397730404
+        },
+        "global_context": {
+          "pearson_r": 0.9327066794249118,
+          "spearman_rho": 0.9130289072830895
+        }
+      },
+      "decorrelation": {
+        "stage1_fwhm_mm": 31.885803184143153,
+        "stage2_fwhm_mm": 31.885803184143153,
+        "stage3_fwhm_mm": 31.885803184143153,
+        "global_fwhm_mm": 31.885803184143153
+      },
+      "trajectory": {
+        "mean_lpe_mm": 1.6886848884395609,
+        "mean_gpe_mm": 23.05638811863412,
+        "max_gpe_mm": 61.62075387824315,
+        "endpoint_error_mm": 61.62075387824315,
+        "mean_rot_error_deg": 1.6978594034262522,
+        "drift_percent": 89.15979321490197
+      }
+    },
+    {
+      "sweep_id": "20260708_183917_forearm_phantom_scan",
+      "num_frames": 43,
+      "correlations": {
+        "stage1_3d_cnn": {
+          "pearson_r": 0.17515958112793514,
+          "spearman_rho": 0.2572679936439395
+        },
+        "stage2_vit_cls": {
+          "pearson_r": -0.07515087265838433,
+          "spearman_rho": 0.12116000301446542
+        },
+        "stage3_temporal": {
+          "pearson_r": -0.043043612442088174,
+          "spearman_rho": 0.17439710031382114
+        },
+        "global_context": {
+          "pearson_r": 0.9167331034048236,
+          "spearman_rho": 0.8874596305504503
+        }
+      },
+      "decorrelation": {
+        "stage1_fwhm_mm": 35.665242242188945,
+        "stage2_fwhm_mm": 30.639365748258864,
+        "stage3_fwhm_mm": 16.804263113013324,
+        "global_fwhm_mm": 35.665242242188945
+      },
+      "trajectory": {
+        "mean_lpe_mm": 2.084052413687524,
+        "mean_gpe_mm": 22.03716891755433,
+        "max_gpe_mm": 66.85015467466997,
+        "endpoint_error_mm": 66.85015467466997,
+        "mean_rot_error_deg": 1.0917601470543008,
+        "drift_percent": 85.71584564990702
+      }
+    },
+    {
+      "sweep_id": "20260708_184430_forearm_phantom_scan",
+      "num_frames": 47,
+      "correlations": {
+        "stage1_3d_cnn": {
+          "pearson_r": -0.10848167679346511,
+          "spearman_rho": -0.013814673490207645
+        },
+        "stage2_vit_cls": {
+          "pearson_r": -0.2366742721183973,
+          "spearman_rho": -0.07892872084980178
+        },
+        "stage3_temporal": {
+          "pearson_r": -0.2069849785715654,
+          "spearman_rho": 0.007284837281564572
+        },
+        "global_context": {
+          "pearson_r": 0.9073768560906671,
+          "spearman_rho": 0.8655406385501294
+        }
+      },
+      "decorrelation": {
+        "stage1_fwhm_mm": 30.688374511182452,
+        "stage2_fwhm_mm": 30.688374511182452,
+        "stage3_fwhm_mm": 18.187650377661356,
+        "global_fwhm_mm": 30.688374511182452
+      },
+      "trajectory": {
+        "mean_lpe_mm": 1.6957303197279037,
+        "mean_gpe_mm": 22.10838013479797,
+        "max_gpe_mm": 64.18323516851822,
+        "endpoint_error_mm": 64.18323516851822,
+        "mean_rot_error_deg": 0.908359787729113,
+        "drift_percent": 95.52918726928364
+      }
+    },
+    {
+      "sweep_id": "20260708_184713_forearm_phantom_scan",
+      "num_frames": 45,
+      "correlations": {
+        "stage1_3d_cnn": {
+          "pearson_r": 0.06868627468898512,
+          "spearman_rho": 0.13143714319207137
+        },
+        "stage2_vit_cls": {
+          "pearson_r": -0.08748010227506903,
+          "spearman_rho": 0.02642602085762359
+        },
+        "stage3_temporal": {
+          "pearson_r": -0.10689862756302321,
+          "spearman_rho": 0.06401656311793184
+        },
+        "global_context": {
+          "pearson_r": 0.9169252429858259,
+          "spearman_rho": 0.8818820716672832
+        }
+      },
+      "decorrelation": {
+        "stage1_fwhm_mm": 31.911628154523868,
+        "stage2_fwhm_mm": 31.577031889656244,
+        "stage3_fwhm_mm": 24.959744571668676,
+        "global_fwhm_mm": 31.911628154523868
+      },
+      "trajectory": {
+        "mean_lpe_mm": 1.7379889430710873,
+        "mean_gpe_mm": 21.89598991861741,
+        "max_gpe_mm": 60.22374906074594,
+        "endpoint_error_mm": 60.22374906074594,
+        "mean_rot_error_deg": 0.9630719953691302,
+        "drift_percent": 92.51470150493056
+      }
+    },
+    {
+      "sweep_id": "20260708_184955_forearm_phantom_scan",
+      "num_frames": 44,
+      "correlations": {
+        "stage1_3d_cnn": {
+          "pearson_r": -0.05616453062834204,
+          "spearman_rho": 0.1430014048973648
+        },
+        "stage2_vit_cls": {
+          "pearson_r": -0.11708680282608257,
+          "spearman_rho": 0.07272407198470045
+        },
+        "stage3_temporal": {
+          "pearson_r": -0.08040653654539866,
+          "spearman_rho": 0.10887120097576924
+        },
+        "global_context": {
+          "pearson_r": 0.9168573327251461,
+          "spearman_rho": 0.8961820856724474
+        }
+      },
+      "decorrelation": {
+        "stage1_fwhm_mm": 32.83961132654365,
+        "stage2_fwhm_mm": 32.83961132654365,
+        "stage3_fwhm_mm": 32.83961132654365,
+        "global_fwhm_mm": 32.83961132654365
+      },
+      "trajectory": {
+        "mean_lpe_mm": 1.7511439858980198,
+        "mean_gpe_mm": 23.25503920170624,
+        "max_gpe_mm": 64.08840698576321,
+        "endpoint_error_mm": 64.08840698576321,
+        "mean_rot_error_deg": 1.129970464541962,
+        "drift_percent": 94.72304173950704
+      }
+    },
+    {
+      "sweep_id": "20260708_185257_forearm_phantom_scan",
+      "num_frames": 48,
+      "correlations": {
+        "stage1_3d_cnn": {
+          "pearson_r": -0.22345188851420608,
+          "spearman_rho": -0.04166200461667949
+        },
+        "stage2_vit_cls": {
+          "pearson_r": -0.20654400784632793,
+          "spearman_rho": 0.04753696538045938
+        },
+        "stage3_temporal": {
+          "pearson_r": -0.09909909098730586,
+          "spearman_rho": 0.18174061594615537
+        },
+        "global_context": {
+          "pearson_r": 0.9268890159427904,
+          "spearman_rho": 0.8957865994072206
+        }
+      },
+      "decorrelation": {
+        "stage1_fwhm_mm": 30.929929767052368,
+        "stage2_fwhm_mm": 30.929929767052368,
+        "stage3_fwhm_mm": 30.929929767052368,
+        "global_fwhm_mm": 30.929929767052368
+      },
+      "trajectory": {
+        "mean_lpe_mm": 1.5075631988191396,
+        "mean_gpe_mm": 21.15566123345149,
+        "max_gpe_mm": 59.06030926217099,
+        "endpoint_error_mm": 59.06030926217099,
+        "mean_rot_error_deg": 1.7883963491007797,
+        "drift_percent": 84.39302254842084
+      }
+    },
+    {
+      "sweep_id": "20260708_185533_forearm_phantom_scan",
+      "num_frames": 44,
+      "correlations": {
+        "stage1_3d_cnn": {
+          "pearson_r": -0.00837726879891589,
+          "spearman_rho": 0.1537188627761641
+        },
+        "stage2_vit_cls": {
+          "pearson_r": -0.0903911382187607,
+          "spearman_rho": 0.11117642150121687
+        },
+        "stage3_temporal": {
+          "pearson_r": -0.07180274153196191,
+          "spearman_rho": 0.17261779971048521
+        },
+        "global_context": {
+          "pearson_r": 0.9296131237114701,
+          "spearman_rho": 0.9267840043652033
+        }
+      },
+      "decorrelation": {
+        "stage1_fwhm_mm": 32.95829367089217,
+        "stage2_fwhm_mm": 32.95829367089217,
+        "stage3_fwhm_mm": 32.95829367089217,
+        "global_fwhm_mm": 32.95829367089217
+      },
+      "trajectory": {
+        "mean_lpe_mm": 1.7666999547262912,
+        "mean_gpe_mm": 23.593266211103526,
+        "max_gpe_mm": 65.18938093533436,
+        "endpoint_error_mm": 65.18938093533436,
+        "mean_rot_error_deg": 1.1226941144796185,
+        "drift_percent": 96.68207701801065
+      }
+    }
+  ]
+}

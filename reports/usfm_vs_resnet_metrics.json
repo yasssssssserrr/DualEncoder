@@ -1,0 +1,25 @@
+{
+  "timestamp": "2026-08-07 11:29:34",
+  "models": {
+    "ResNet-18 (CNN)": {
+      "backbone_name": "ResNet-18 (3D/2D CNN)",
+      "feature_dim": 512,
+      "pearson_r": -0.18185434721686938,
+      "spearman_rho": -0.34928168685326344,
+      "fwhm_mm": 40.0,
+      "crop_stability_cosine": 0.9994617104530334,
+      "inference_time_ms_per_frame": 0.4658800714816419,
+      "memory_mb": 11.7
+    },
+    "USFM (Vision Transformer)": {
+      "backbone_name": "USFM (HVIT Hierarchical ViT)",
+      "feature_dim": 256,
+      "pearson_r": -0.430925181140516,
+      "spearman_rho": -0.5010689497359919,
+      "fwhm_mm": 40.0,
+      "crop_stability_cosine": 0.9984544515609741,
+      "inference_time_ms_per_frame": 0.8710833751232634,
+      "memory_mb": 86.2
+    }
+  }
+}
