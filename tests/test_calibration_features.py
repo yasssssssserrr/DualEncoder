@@ -1,9 +1,11 @@
 """Unit tests for Differentiable Layer 2 Spatial Feature Extractor and Calibration Loss."""
+import numpy as np
 import torch
 import pytest
 from src.calibration.spatial_feature_extractor import DualTrackSpatialFeatureExtractor, IntermediateLayerHook
 from src.calibration.loss_functions import (
     compute_bone_cortex_attention_mask,
+    prepare_joint_binary_mask,
     create_2d_rigid_affine_matrix,
     differentiable_spatial_warp_2d,
     BoneWeightedCalibrationLoss,
@@ -87,3 +89,49 @@ def test_bone_weighted_calibration_loss():
 
     assert loss.item() >= 0.0
     assert torch.isfinite(loss)
+
+
+def test_prepare_joint_binary_mask():
+    # Simulate a binary mask from JOINT segmentation (e.g. 512x485)
+    joint_raw_mask = np.zeros((512, 485), dtype=np.uint8)
+    joint_raw_mask[200:240, 100:350] = 1  # Segmented bone cortex
+
+    # Test with target_size, dilation, and smoothing
+    processed = prepare_joint_binary_mask(
+        joint_raw_mask,
+        target_size=(56, 56),
+        dilation_radius=2,
+        smooth_sigma=1.0,
+    )
+
+    assert processed.shape == (1, 1, 56, 56)
+    assert processed.min() >= 0.0
+    assert processed.max() <= 1.0
+    # Bone region should have positive activation
+    assert processed.sum() > 0.0
+
+
+def test_joint_mask_loss_modes():
+    fmap_a = torch.randn(1, 128, 56, 56)
+    fmap_b = fmap_a.clone() + 0.1 * torch.randn(1, 128, 56, 56)
+    
+    # Binary JOINT mask
+    joint_mask = torch.zeros(1, 1, 56, 56)
+    joint_mask[0, 0, 20:30, 20:40] = 1.0
+
+    # 1. Hard mask mode
+    loss_hard_fn = BoneWeightedCalibrationLoss(metric="cosine", mask_mode="hard")
+    loss_hard = loss_hard_fn(fmap_a, fmap_b, bone_weight_mask=joint_mask)
+    assert torch.isfinite(loss_hard)
+    assert loss_hard.item() > 0.0
+
+    # 2. Boost mode
+    loss_boost_fn = BoneWeightedCalibrationLoss(metric="cosine", mask_mode="boost", bone_boost_factor=5.0)
+    loss_boost = loss_boost_fn(fmap_a, fmap_b, bone_weight_mask=joint_mask)
+    assert torch.isfinite(loss_boost)
+
+    # 3. Normalized mode
+    loss_norm_fn = BoneWeightedCalibrationLoss(metric="cosine", mask_mode="normalized")
+    loss_norm = loss_norm_fn(fmap_a, fmap_b, bone_weight_mask=joint_mask)
+    assert torch.isfinite(loss_norm)
+

@@ -51,6 +51,75 @@ def compute_bone_cortex_attention_mask(
     return bone_mask
 
 
+def prepare_joint_binary_mask(
+    mask: Union[np.ndarray, torch.Tensor, str],
+    target_size: Optional[Tuple[int, int]] = None,
+    dilation_radius: int = 0,
+    smooth_sigma: float = 0.0,
+    device: Optional[torch.device | str] = None,
+) -> torch.Tensor:
+    """Preprocesses a binary bone segmentation mask (e.g. from MDL-UzL/JOINT) for feature weighting.
+    
+    Args:
+        mask: Binary mask as np.ndarray, torch.Tensor, or file path (.npy, .png).
+              Shape can be (H, W), (1, H, W), or (B, 1, H, W) with values {0, 1}.
+        target_size: Optional (H', W') spatial size to interpolate mask to (e.g. 56x56 for Layer 2).
+        dilation_radius: Optional integer radius for morphological dilation (expands bone edge).
+        smooth_sigma: Optional Gaussian smoothing standard deviation for soft boundary weighting.
+        device: Target torch device.
+        
+    Returns:
+        processed_mask: (B, 1, H', W') normalized attention mask tensor in [0, 1].
+    """
+    if isinstance(mask, str):
+        path = Path(mask)
+        if path.suffix == ".npy":
+            mask_np = np.load(path)
+        else:
+            from PIL import Image
+            mask_np = np.array(Image.open(path).convert("L"))
+        mask_t = torch.from_numpy(mask_np).float()
+    elif isinstance(mask, np.ndarray):
+        mask_t = torch.from_numpy(np.array(mask, copy=True)).float()
+    elif isinstance(mask, torch.Tensor):
+        mask_t = mask.clone().float()
+    else:
+        raise TypeError(f"Unsupported mask type: {type(mask)}")
+
+    # Ensure 4D (B, 1, H, W)
+    if mask_t.ndim == 2:
+        mask_t = mask_t.unsqueeze(0).unsqueeze(0)
+    elif mask_t.ndim == 3:
+        mask_t = mask_t.unsqueeze(1)
+
+    if device is not None:
+        mask_t = mask_t.to(device)
+
+    # Threshold to strict binary [0, 1]
+    binary_mask = (mask_t > 0.5).float()
+
+    # Optional Morphological Dilation via Max Pooling
+    if dilation_radius > 0:
+        kernel_size = 2 * dilation_radius + 1
+        binary_mask = F.max_pool2d(binary_mask, kernel_size=kernel_size, stride=1, padding=dilation_radius)
+
+    # Optional Gaussian Smoothing for smooth boundary gradient
+    if smooth_sigma > 0.0:
+        radius = int(3 * smooth_sigma)
+        k_size = 2 * radius + 1
+        x = torch.arange(-radius, radius + 1, device=binary_mask.device, dtype=torch.float32)
+        gauss_1d = torch.exp(-0.5 * (x / smooth_sigma) ** 2)
+        gauss_2d = (gauss_1d[:, None] * gauss_1d[None, :])
+        gauss_2d = (gauss_2d / gauss_2d.sum()).view(1, 1, k_size, k_size)
+        binary_mask = F.conv2d(binary_mask, gauss_2d, padding=radius)
+
+    # Resample to target feature map dimensions
+    if target_size is not None and binary_mask.shape[-2:] != target_size:
+        binary_mask = F.interpolate(binary_mask, size=target_size, mode="bilinear", align_corners=False)
+
+    return binary_mask
+
+
 def create_2d_rigid_affine_matrix(
     tx: torch.Tensor,
     ty: torch.Tensor,
@@ -101,11 +170,29 @@ def differentiable_spatial_warp_2d(
 
 
 class BoneWeightedCalibrationLoss(nn.Module):
-    """Bone-prioritized spatial feature consistency loss for calibration optimization."""
+    """Bone-prioritized spatial feature consistency loss for calibration optimization.
+    
+    Supports both heuristic attention masks and binary segmentation masks (e.g. from MDL-UzL/JOINT).
+    """
 
-    def __init__(self, metric: str = "cosine", bone_boost_factor: float = 3.0):
+    def __init__(
+        self,
+        metric: str = "cosine",
+        mask_mode: str = "boost",
+        bone_boost_factor: float = 3.0,
+    ):
+        """
+        Args:
+            metric: Distance metric ('cosine', 'mse', 'ncc').
+            mask_mode: 
+                - 'boost': base weight 1.0 + bone_boost_factor * mask (tissue provides base context, bone is boosted).
+                - 'hard': evaluate loss strictly inside the bone mask (mask > 0.1).
+                - 'normalized': weights normalized to sum to 1.0.
+            bone_boost_factor: Multiplier for bone pixels when mask_mode='boost'.
+        """
         super().__init__()
         self.metric = metric
+        self.mask_mode = mask_mode
         self.bone_boost_factor = bone_boost_factor
 
     def forward(
@@ -119,40 +206,50 @@ class BoneWeightedCalibrationLoss(nn.Module):
         Args:
             fmap_a: Target spatial feature map (B, C, H, W).
             fmap_b_warped: Warped source spatial feature map (B, C, H, W).
-            bone_weight_mask: Optional (B, 1, H, W) attention mask.
+            bone_weight_mask: Optional (B, 1, H, W) attention or binary JOINT mask.
             
         Returns:
             loss: Scalar differentiable loss tensor.
         """
+        B, C, H, W = fmap_a.shape
+
         # Downsample weight mask to match feature map resolution if needed
-        if bone_weight_mask is not None and bone_weight_mask.shape[-2:] != fmap_a.shape[-2:]:
-            weight = F.interpolate(bone_weight_mask, size=fmap_a.shape[-2:], mode="bilinear", align_corners=False)
+        if bone_weight_mask is not None and bone_weight_mask.shape[-2:] != (H, W):
+            weight = F.interpolate(bone_weight_mask, size=(H, W), mode="bilinear", align_corners=False)
         elif bone_weight_mask is not None:
             weight = bone_weight_mask
         else:
-            weight = torch.ones((fmap_a.shape[0], 1, fmap_a.shape[2], fmap_a.shape[3]), device=fmap_a.device)
+            weight = torch.ones((B, 1, H, W), device=fmap_a.device)
 
-        # Apply bone boost weighting
-        weight = 1.0 + self.bone_boost_factor * weight
+        # Configure weights according to mask_mode
+        if self.mask_mode == "hard":
+            # Strict bone-only masking
+            bone_binary = (weight > 0.2).float()
+            # If no bone is present in mask, fall back to uniform to prevent division by zero
+            if bone_binary.sum() < 1.0:
+                bone_binary = torch.ones_like(bone_binary)
+            effective_weight = bone_binary
+        elif self.mask_mode == "normalized":
+            effective_weight = weight / (weight.sum() + 1e-8)
+        else:  # "boost" (default)
+            effective_weight = 1.0 + self.bone_boost_factor * weight
 
         if self.metric == "cosine":
-            # Cosine similarity along channel dimension C
             cos_sim = F.cosine_similarity(fmap_a, fmap_b_warped, dim=1, eps=1e-8)  # (B, H, W)
             loss_map = 1.0 - cos_sim  # In [0, 2]
-            weighted_loss = (loss_map.unsqueeze(1) * weight).sum() / (weight.sum() + 1e-8)
+            weighted_loss = (loss_map.unsqueeze(1) * effective_weight).sum() / (effective_weight.sum() + 1e-8)
             return weighted_loss
 
         elif self.metric == "mse":
             diff_sq = (fmap_a - fmap_b_warped) ** 2  # (B, C, H, W)
-            weighted_loss = (diff_sq * weight).sum() / (weight.sum() * fmap_a.shape[1] + 1e-8)
+            weighted_loss = (diff_sq * effective_weight).sum() / (effective_weight.sum() * C + 1e-8)
             return weighted_loss
 
         elif self.metric == "ncc":
-            # Normalized Cross Correlation
             a_c = fmap_a - fmap_a.mean(dim=(2, 3), keepdim=True)
             b_c = fmap_b_warped - fmap_b_warped.mean(dim=(2, 3), keepdim=True)
-            num = (a_c * b_c * weight).sum(dim=(1, 2, 3))
-            den = torch.sqrt((a_c**2 * weight).sum(dim=(1, 2, 3)) * (b_c**2 * weight).sum(dim=(1, 2, 3)) + 1e-8)
+            num = (a_c * b_c * effective_weight).sum(dim=(1, 2, 3))
+            den = torch.sqrt((a_c**2 * effective_weight).sum(dim=(1, 2, 3)) * (b_c**2 * effective_weight).sum(dim=(1, 2, 3)) + 1e-8)
             return (1.0 - num / den).mean()
 
         else:
