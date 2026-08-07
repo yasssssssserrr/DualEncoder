@@ -1,8 +1,51 @@
 {
   "dataset": "20260708_173817_forearm_phantom_scan",
-  "selected_latent_dimension": 457,
-  "latent_dimension_variance": 14.45785903930664,
-  "trajectory_direction_pc1_correlation": 0.22056108318096046,
+  "hierarchy_probes": {
+    "stage1_3d_cnn": {
+      "embedding_dim": 512,
+      "train_pearson_r": 0.9593699620171614,
+      "train_spearman_rho": 0.9391902215431627,
+      "train_r2": 0.8765491204201799,
+      "cv_pearson_r": -0.23767178990581952,
+      "cv_spearman_rho": -0.06768525592055004,
+      "cv_r2": -230.1798614730518,
+      "description": "Local Anatomy & Micro-Speckle"
+    },
+    "stage2_vit_cls": {
+      "embedding_dim": 64,
+      "train_pearson_r": 0.8899804693695219,
+      "train_spearman_rho": 0.8294881588999236,
+      "train_r2": 0.736227297849805,
+      "cv_pearson_r": -0.03237453554357249,
+      "cv_spearman_rho": -0.2320855614973262,
+      "cv_r2": -0.6002433846062132,
+      "description": "Patch Appearance & Semantics"
+    },
+    "stage3_temporal": {
+      "embedding_dim": 512,
+      "train_pearson_r": 0.9770277037349834,
+      "train_spearman_rho": 0.8921313980137509,
+      "train_r2": 0.9464139484498144,
+      "cv_pearson_r": 0.26783324276223386,
+      "cv_spearman_rho": 0.20702826585179523,
+      "cv_r2": -0.16713220234960802,
+      "description": "Sequential Smoothing"
+    },
+    "global_context": {
+      "embedding_dim": 512,
+      "train_pearson_r": 0.9970746343316212,
+      "train_spearman_rho": 0.9987776928953398,
+      "train_r2": 0.9938531398424545,
+      "cv_pearson_r": 0.9833575062125366,
+      "cv_spearman_rho": 0.9642475171886936,
+      "cv_r2": 0.9497408047484037,
+      "description": "Global Trajectory Manifold"
+    }
+  },
+  "headline_objective": "trajectory_probe",
+  "headline_cv_pearson_r": 0.9833575062125366,
+  "unsupervised_pc1_correlation": 0.9765370731456051,
+  "selected_latent_dimension": 333,
   "faithfulness": {
     "mask_fractions": [
       0.05,
@@ -13,38 +56,40 @@
       0.5
     ],
     "top_attribution_drops": [
-      0.06426334381103516,
-      0.16781902313232422,
-      0.3938884735107422,
-      0.5233888626098633,
-      0.5594887733459473,
-      0.5702319145202637
+      0.04016155004501343,
+      0.05362802743911743,
+      0.09962141513824463,
+      0.10947006940841675,
+      0.11007243394851685,
+      0.1035757064819336
     ],
     "random_attribution_drops": [
-      0.13088817596435548,
-      0.20613670349121094,
-      0.27346248626708985,
-      0.2810154914855957,
-      0.2511887550354004,
-      0.20516157150268555
+      0.011323130130767823,
+      0.029876565933227538,
+      0.04996405839920044,
+      0.07031601667404175,
+      0.09701958894729615,
+      0.09860028028488159
     ],
     "least_attribution_drops": [
-      0.008793830871582031,
-      0.03723955154418945,
-      0.12089920043945312,
-      0.17858362197875977,
-      0.20183420181274414,
-      0.21383380889892578
+      0.030130505561828613,
+      0.04317188262939453,
+      0.13578259944915771,
+      0.16696715354919434,
+      0.19583874940872192,
+      0.19401270151138306
     ],
-    "audc_top": 0.379846731821696,
-    "audc_random": 0.2246421972910563,
-    "audc_least": 0.12686403592427573,
-    "is_faithful": true
+    "audc_top": 0.08608820041020711,
+    "audc_random": 0.05951660672823588,
+    "audc_least": 0.1276505986849467,
+    "is_faithful": false
   },
   "figures": [
-    "gradcam_layer_hierarchy.png",
+    "gradcam_local_vs_global_emergence.png",
     "gradcam_trajectory_progression.png",
+    "gradcam_layer_hierarchy.png",
     "gradcam_pairwise_similarity.png",
+    "gradcam_secondary_objectives.png",
     "gradcam_faithfulness_deletion.png"
   ]
 }

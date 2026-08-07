@@ -256,3 +256,37 @@ def test_faithfulness_deletion(dummy_encoder):
     assert "audc_random" in results
     assert "audc_least" in results
     assert len(results["top_attribution_drops"]) == 2
+
+
+def test_trajectory_linear_probe():
+    """Test TrajectoryLinearProbe ridge fitting and cross-validation."""
+    from src.diagnostics.gradcam import TrajectoryLinearProbe
+
+    N, D = 40, 64
+    t = np.linspace(0, 15, N)
+    # Synthetic embeddings with strong linear progression along first 4 components
+    Z = np.random.randn(N, D) * 0.1
+    Z[:, :4] += t[:, None] * 0.5
+
+    probe = TrajectoryLinearProbe(alpha=1.0, cv_folds=5).fit(Z, t)
+    assert probe.weights.shape == (D,)
+    assert probe.direction_vector.shape == (D,)
+    assert np.isclose(np.linalg.norm(probe.direction_vector), 1.0)
+    assert probe.pearson_r > 0.90
+    assert probe.cv_pearson_r > 0.85
+    assert probe.cv_r2_score > 0.70
+
+
+def test_gradcam_trajectory_probe_objective(dummy_encoder):
+    """Test UltrasoundGradCAM with trajectory_probe objective."""
+    x = torch.randn(1, 1, 64, 64)
+    w_traj = np.random.randn(512)
+    w_traj = w_traj / np.linalg.norm(w_traj)
+
+    with UltrasoundGradCAM(dummy_encoder, target_layer="layer4") as cam:
+        cam_map, meta = cam.explain(x, objective="trajectory_probe", direction=w_traj)
+        assert cam_map.shape == (1, 64, 64)
+        assert meta.objective == "trajectory_probe"
+        assert meta.target_direction_name == "trajectory_probe_direction"
+        assert not torch.isnan(cam_map).any()
+

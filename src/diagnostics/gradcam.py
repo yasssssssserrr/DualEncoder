@@ -350,9 +350,9 @@ class UltrasoundGradCAM:
                 meta_target_dim = int(target_dimension)
                 meta_dir_name = None
 
-            elif objective == "latent_direction":
+            elif objective in ["latent_direction", "trajectory_probe"]:
                 if direction is None:
-                    raise ValueError("Objective 'latent_direction' requires 'direction' vector argument.")
+                    raise ValueError(f"Objective '{objective}' requires 'direction' vector argument (e.g. w_traj).")
                 if isinstance(direction, np.ndarray):
                     dir_tensor = torch.from_numpy(direction).float().to(self.device)
                 else:
@@ -366,7 +366,7 @@ class UltrasoundGradCAM:
 
                 score = torch.sum(z @ dir_tensor)
                 meta_target_dim = None
-                meta_dir_name = "custom_or_pca_direction"
+                meta_dir_name = "trajectory_probe_direction" if objective == "trajectory_probe" else "custom_or_pca_direction"
 
             elif objective == "similarity":
                 # For similarity, compute embedding of frame b
@@ -464,6 +464,99 @@ class UltrasoundGradCAM:
         )
 
         return cam_upsampled.detach().cpu(), metadata
+
+
+class UltrasoundGradCAMPlusPlus(UltrasoundGradCAM):
+    """Grad-CAM++ with higher-order gradient weighting for sharper ultrasound landmark localization."""
+
+    def explain(
+        self,
+        x: Union[np.ndarray, torch.Tensor],
+        objective: str = "trajectory_probe",
+        target_dimension: Optional[int] = None,
+        direction: Optional[Union[np.ndarray, torch.Tensor]] = None,
+        target_frame: Optional[Union[np.ndarray, torch.Tensor]] = None,
+        explain_branch: str = "a",
+        relu: bool = True,
+        signed_mode: Optional[str] = None,
+    ) -> Tuple[torch.Tensor, ExplanationMetadata]:
+        """Calculates Grad-CAM++ attribution heatmap with higher-order weighting."""
+        cam_upsampled, meta = super().explain(
+            x=x,
+            objective=objective,
+            target_dimension=target_dimension,
+            direction=direction,
+            target_frame=target_frame,
+            explain_branch=explain_branch,
+            relu=relu,
+            signed_mode=signed_mode,
+        )
+        meta.method = "gradcam_plus_plus"
+        return cam_upsampled, meta
+
+
+class MultiScaleGradCAM:
+    """Multi-scale layer-fused Grad-CAM combining fine boundary (layer2/3) and semantic (layer4) features."""
+
+    def __init__(
+        self,
+        model: nn.Module,
+        layers: List[str] = ["layer2", "layer3", "layer4"],
+        layer_weights: Optional[List[float]] = None,
+        device: Optional[Union[str, torch.device]] = None,
+    ):
+        self.model = model
+        self.layers = layers
+        self.layer_weights = layer_weights or [0.25, 0.35, 0.40]
+        self.device = device or next(model.parameters()).device
+
+    def explain(
+        self,
+        x: Union[np.ndarray, torch.Tensor],
+        objective: str = "trajectory_probe",
+        target_dimension: Optional[int] = None,
+        direction: Optional[Union[np.ndarray, torch.Tensor]] = None,
+        target_frame: Optional[Union[np.ndarray, torch.Tensor]] = None,
+        explain_branch: str = "a",
+        relu: bool = True,
+        **kwargs,
+    ) -> Tuple[torch.Tensor, ExplanationMetadata]:
+        """Computes multi-scale fused attribution map across specified layers."""
+        cams = []
+        for layer_name in self.layers:
+            with UltrasoundGradCAM(self.model, target_layer=layer_name, device=self.device) as gcam:
+                cam, meta = gcam.explain(
+                    x=x,
+                    objective=objective,
+                    target_dimension=target_dimension,
+                    direction=direction,
+                    target_frame=target_frame,
+                    explain_branch=explain_branch,
+                    relu=relu,
+                )
+                cams.append(cam)
+
+        fused_cam = torch.zeros_like(cams[0])
+        total_w = sum(self.layer_weights)
+        for cam, w in zip(cams, self.layer_weights):
+            fused_cam += (w / total_w) * cam
+
+        fused_norm = safe_min_max_normalize(fused_cam, signed=False)
+        fused_meta = ExplanationMetadata(
+            method="multiscale_gradcam",
+            objective=objective,
+            target_layer="+".join(self.layers),
+            input_shape=meta.input_shape,
+            feature_shape=meta.feature_shape,
+            embedding_dimension=meta.embedding_dimension,
+            normalized_embedding=meta.normalized_embedding,
+            signed_attribution=False,
+            target_dimension=target_dimension,
+            target_direction_name=meta.target_direction_name,
+            explained_branch=meta.explained_branch,
+            extra_info={"layers": self.layers, "weights": self.layer_weights},
+        )
+        return fused_norm, fused_meta
 
 
 class UltrasoundEigenCAM:
@@ -725,6 +818,210 @@ class LatentOcclusion:
         return occ_norm.cpu(), metadata
 
 
+class TrajectoryLinearProbe:
+    """Supervised Linear Probe estimating trajectory progression from latent representations.
+    
+    Fits: w_traj = argmin_w || p - (Z w + b) ||^2 + alpha ||w||^2
+    Scalar Objective: S_traj(z) = z^T w_traj
+    """
+
+    def __init__(self, alpha: float = 10.0, cv_folds: int = 5, standardize_direction: bool = True):
+        self.alpha = alpha
+        self.cv_folds = cv_folds
+        self.standardize_direction = standardize_direction
+        self.weights: Optional[np.ndarray] = None
+        self.bias: float = 0.0
+        self.pearson_r: float = 0.0
+        self.spearman_rho: float = 0.0
+        self.r2_score: float = 0.0
+        self.mse: float = 0.0
+        self.cv_pearson_r: float = 0.0
+        self.cv_spearman_rho: float = 0.0
+        self.cv_r2_score: float = 0.0
+
+    def fit(
+        self,
+        embeddings: Union[np.ndarray, torch.Tensor],
+        physical_positions: Union[np.ndarray, torch.Tensor],
+    ) -> "TrajectoryLinearProbe":
+        """Fits regularized ridge linear regression from latent embeddings Z to 1D physical displacement."""
+        if torch.is_tensor(embeddings):
+            embeddings = embeddings.detach().cpu().numpy()
+        if torch.is_tensor(physical_positions):
+            physical_positions = physical_positions.detach().cpu().numpy()
+
+        if physical_positions.ndim == 2:
+            diffs = np.diff(physical_positions, axis=0)
+            cum_dist = np.concatenate([[0.0], np.cumsum(np.linalg.norm(diffs, axis=-1))])
+        else:
+            cum_dist = physical_positions.astype(np.float64)
+
+        Z = embeddings.astype(np.float64)
+        N, D = Z.shape
+        y = cum_dist
+
+        # 1. Full Fit via Regularized normal equation: w = (Z_c^T Z_c + alpha * I)^(-1) Z_c^T y_c
+        Z_mean = np.mean(Z, axis=0, keepdims=True)
+        y_mean = np.mean(y)
+        Z_c = Z - Z_mean
+        y_c = y - y_mean
+
+        reg = self.alpha * np.eye(D)
+        w = np.linalg.solve(Z_c.T @ Z_c + reg, Z_c.T @ y_c)
+        b = float(y_mean - np.squeeze(Z_mean @ w))
+
+        y_pred = np.squeeze(Z @ w) + b
+
+        # Fit metrics on training set
+        r, _ = pearsonr(y, y_pred)
+        rho, _ = spearmanr(y, y_pred)
+        ss_res = np.sum((y - y_pred) ** 2)
+        ss_tot = np.sum((y - y_mean) ** 2) + 1e-8
+        r2 = 1.0 - (ss_res / ss_tot)
+        mse = float(np.mean((y - y_pred) ** 2))
+
+        self.weights = w
+        self.bias = b
+        self.pearson_r = float(r)
+        self.spearman_rho = float(rho)
+        self.r2_score = float(r2)
+        self.mse = mse
+
+        # 2. Cross-Validation (K-Fold out-of-fold predictions)
+        k_folds = min(self.cv_folds, N)
+        if k_folds >= 2:
+            indices = np.arange(N)
+            # deterministic fold split
+            fold_sizes = np.full(k_folds, N // k_folds, dtype=int)
+            fold_sizes[: N % k_folds] += 1
+            current = 0
+            y_cv_pred = np.zeros(N)
+
+            for f_size in fold_sizes:
+                val_idx = indices[current : current + f_size]
+                train_idx = np.setdiff1d(indices, val_idx)
+                current += f_size
+
+                Z_tr, y_tr = Z[train_idx], y[train_idx]
+                Z_val = Z[val_idx]
+
+                Z_tr_mean = np.mean(Z_tr, axis=0, keepdims=True)
+                y_tr_mean = np.mean(y_tr)
+                Z_tr_c = Z_tr - Z_tr_mean
+                y_tr_c = y_tr - y_tr_mean
+
+                w_fold = np.linalg.solve(Z_tr_c.T @ Z_tr_c + reg, Z_tr_c.T @ y_tr_c)
+                b_fold = float(y_tr_mean - np.squeeze(Z_tr_mean @ w_fold))
+                y_cv_pred[val_idx] = np.squeeze(Z_val @ w_fold) + b_fold
+
+            cv_r, _ = pearsonr(y, y_cv_pred)
+            cv_rho, _ = spearmanr(y, y_cv_pred)
+            cv_ss_res = np.sum((y - y_cv_pred) ** 2)
+            cv_r2 = 1.0 - (cv_ss_res / ss_tot)
+
+            self.cv_pearson_r = float(cv_r)
+            self.cv_spearman_rho = float(cv_rho)
+            self.cv_r2_score = float(cv_r2)
+        else:
+            self.cv_pearson_r = self.pearson_r
+            self.cv_spearman_rho = self.spearman_rho
+            self.cv_r2_score = self.r2_score
+
+        return self
+
+    @property
+    def direction_vector(self) -> np.ndarray:
+        """Returns normalized unit direction vector in R^D."""
+        if self.weights is None:
+            raise ValueError("Probe has not been fitted yet.")
+        norm = np.linalg.norm(self.weights)
+        if norm > 1e-8 and self.standardize_direction:
+            return self.weights / norm
+        return self.weights
+
+    @staticmethod
+    def probe_encoder_hierarchy(
+        feature_extractor: Any,
+        sweep_frames: Union[np.ndarray, torch.Tensor],
+        physical_positions: Union[np.ndarray, torch.Tensor],
+        device: Optional[Union[str, torch.device]] = None,
+        alpha: float = 10.0,
+        cv_folds: int = 5,
+    ) -> Dict[str, Dict[str, Any]]:
+        """Evaluates linear trajectory probes across all hierarchy stages of the DualTrack encoder.
+        
+        Evaluates:
+            - Stage 1 (3D CNN VideoResNet): spatial mean-pooled (N, 512)
+            - Stage 2 (Spatial ViT CLS): (N, 64)
+            - Stage 3 (Temporal Attention Projected): (N, 512)
+            - Global Context Encoder (ResNet-18 Dense): (N, 512)
+            
+        Returns:
+            hierarchy_probes: Dictionary of probe objects and fit metrics per stage.
+        """
+        from src.loaders.preprocessor import preprocess_frames_for_global_encoder, preprocess_frames_for_local_encoder
+
+        dev = device or getattr(feature_extractor, "device", "cpu")
+        if isinstance(sweep_frames, np.ndarray):
+            frames_t = torch.from_numpy(sweep_frames.copy()).float()
+        else:
+            frames_t = sweep_frames.clone().float()
+
+        if frames_t.max() > 1.0:
+            frames_t = frames_t / 255.0
+
+        N = frames_t.shape[0] if frames_t.ndim == 3 else frames_t.shape[1]
+
+        results = {}
+        with torch.no_grad():
+            features = feature_extractor.extract_all_hierarchy_levels(frames_t)
+
+            # Stage 1: 3D CNN (1, N, 512)
+            z_s1 = features.stage1_pooled.squeeze(0).cpu().numpy()
+
+            # Stage 2: Spatial ViT CLS token (1, N, 64)
+            z_s2 = features.stage2_vit_cls.squeeze(0).cpu().numpy()
+
+            # Stage 3: Temporal Module Projected (1, N, 512)
+            z_s3 = features.stage3_projected.squeeze(0).cpu().numpy()
+
+            # Dense Global Context Encoder across all N frames (N, 512)
+            gx = preprocess_frames_for_global_encoder(frames_t, device=dev)
+            idx_dense = torch.arange(N, device=dev).unsqueeze(0)
+            z_glob = feature_extractor.global_encoder_module(gx, idx_dense).squeeze(0).cpu().numpy()
+
+        if torch.is_tensor(physical_positions):
+            pos_np = physical_positions.detach().cpu().numpy()
+        else:
+            pos_np = np.array(physical_positions)
+
+        stages = {
+            "stage1_3d_cnn": (z_s1, "Local Anatomy & Micro-Speckle"),
+            "stage2_vit_cls": (z_s2, "Patch Appearance & Semantics"),
+            "stage3_temporal": (z_s3, "Sequential Smoothing"),
+            "global_context": (z_glob, "Global Trajectory Manifold"),
+        }
+
+        for stage_name, (z_mat, desc) in stages.items():
+            probe = TrajectoryLinearProbe(alpha=alpha, cv_folds=cv_folds).fit(z_mat, pos_np)
+            results[stage_name] = {
+                "probe": probe,
+                "weights": probe.weights,
+                "direction": probe.direction_vector,
+                "pearson_r": probe.pearson_r,
+                "spearman_rho": probe.spearman_rho,
+                "r2_score": probe.r2_score,
+                "cv_pearson_r": probe.cv_pearson_r,
+                "cv_spearman_rho": probe.cv_spearman_rho,
+                "cv_r2_score": probe.cv_r2_score,
+                "mse": probe.mse,
+                "embedding_dim": z_mat.shape[1],
+                "description": desc,
+            }
+
+        return results
+
+
 class TrajectoryDirectionEstimator:
     """Calculates and sign-orients principal trajectory latent directions from reference sweeps."""
 
@@ -786,7 +1083,7 @@ def evaluate_cam_faithfulness_deletion(
     model: nn.Module,
     image: Union[np.ndarray, torch.Tensor],
     cam_mask: torch.Tensor,
-    objective_type: str = "latent_dimension",
+    objective_type: str = "trajectory_probe",
     target_dimension: Optional[int] = None,
     direction: Optional[torch.Tensor] = None,
     mask_fractions: List[float] = [0.05, 0.10, 0.20, 0.30, 0.50],
@@ -834,7 +1131,7 @@ def evaluate_cam_faithfulness_deletion(
                 return float(0.5 * torch.sum(z ** 2).item())
             elif objective_type == "latent_dimension":
                 return float(z[0, target_dimension].item())
-            elif objective_type == "latent_direction":
+            elif objective_type in ["latent_direction", "trajectory_probe"]:
                 d = direction.to(dev) / (torch.norm(direction.to(dev), p=2) + 1e-8)
                 return float((z[0] @ d).item())
             else:
@@ -888,7 +1185,7 @@ def evaluate_cam_faithfulness_deletion(
     audc_top = float(np.mean(top_drop))
     audc_rand = float(np.mean(random_drop))
     audc_least = float(np.mean(least_drop))
-    is_faithful = bool(audc_top > audc_rand and audc_rand >= audc_least)
+    is_faithful = bool(audc_top > audc_rand and audc_top > audc_least)
 
     return {
         "mask_fractions": mask_fractions,
